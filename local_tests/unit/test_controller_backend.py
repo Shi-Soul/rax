@@ -102,6 +102,22 @@ def test_a_backend_with_a_native_record_evaluates_after_its_simulator_exits(supe
     assert 'evaluation' not in result and backend.closed
 
 
+def test_episode_restart_does_not_require_storage_symlinks(supervisor, monkeypatch):
+    s, backend = supervisor
+    readlink = os.readlink
+    def unsupported_link(path, **kwargs):
+        if Path(path).name == 'autonomous_controller':
+            raise FileNotFoundError(2, 'No such file or directory', str(path))
+        return readlink(path, **kwargs)
+    monkeypatch.setattr(os, 'readlink', unsupported_link)
+    for _ in range(2):
+        s.start_interactive()
+        result = s.finish_interactive()
+        assert result['recording_errors'] == []
+        assert 'start_failure' not in result
+    assert len(backend.starts) == 2
+
+
 @pytest.mark.parametrize('formal', [False, True])
 def test_a_stop_mid_episode_is_recorded_as_the_stop(supervisor, tmp_path, formal):
     """SIGTERM raises SystemExit in the session service; the episode it cut short is recorded as
@@ -750,16 +766,17 @@ def test_component_returns_locations_not_logs_or_images(unlocked_supervisor, tmp
     serialized = json.dumps(result)
     assert "specific-debug-point" not in serialized and "specific-error-point" not in serialized
     assert '"data"' not in serialized and not result["recording_errors"]
-    view = s.config.root / "agent-view"
+    def artifact(path):
+        return s.published_root / Path(path).relative_to('runtime/autonomous_controller')
     paths = result["artifacts"]
-    assert (view / paths["stdout"]).read_text() == "specific-debug-point"
-    assert (view / paths["stderr"]).read_text() == "specific-error-point"
-    assert (view / paths["code"] / "controller.py").is_file()
-    trace = [json.loads(line) for line in (view / paths["mcp_trace"]).read_text().splitlines()]
+    assert artifact(paths["stdout"]).read_text() == "specific-debug-point"
+    assert artifact(paths["stderr"]).read_text() == "specific-error-point"
+    assert (artifact(paths["code"]) / "controller.py").is_file()
+    trace = [json.loads(line) for line in artifact(paths["mcp_trace"]).read_text().splitlines()]
     actions = [e for e in trace if e.get("tool") == STEP]
     assert actions[0]["call_id"] == actions[1]["call_id"]
-    assert (view / actions[1]["response_path"]).is_file()
-    assert (view / actions[1]["images"][0]["path"]).read_bytes().startswith(b"\x89PNG")
+    assert artifact(actions[1]["response_path"]).is_file()
+    assert artifact(actions[1]["images"][0]["path"]).read_bytes().startswith(b"\x89PNG")
     assert result["start_step_id"] == 0 and result["end_step_id"] == 1
 
 

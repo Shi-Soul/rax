@@ -248,19 +248,7 @@ class Supervisor:
         previous = self._recording
         self._recording = RunRecording(self.published_root, f"{mode}-{ident}",
                                        observation_profile=self.config.observation_profile)
-        # A standalone read-only file-view workspace. Frontends may mount ONLY
-        # published/ at runtime/autonomous_controller; never grant access to config.root.
-        view = self.config.root / "agent-view" / "runtime"
-        view.mkdir(parents=True, exist_ok=True)
-        link = view / "autonomous_controller"
-        target = self.published_root
-        if link.is_symlink():
-            if link.resolve() != target:
-                raise RuntimeError("Unexpected artifact-view symlink")
-        elif link.exists():
-            raise RuntimeError("Artifact-view path already occupied")
-        else:
-            link.symlink_to(target, target_is_directory=True)
+        # Frontends expose published/ directly; no host-side file-view link is needed.
         return previous
 
     def _publish_sequence(self, value):
