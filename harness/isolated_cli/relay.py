@@ -5,7 +5,6 @@ tools, generate prompts, or implement an agent. Only the selected model and
 endpoint are reachable; audit records omit prompts, images and credentials.
 """
 from contextlib import contextmanager
-import http.client
 from http.server import BaseHTTPRequestHandler
 import json
 from pathlib import Path
@@ -13,7 +12,22 @@ import socketserver
 import threading
 import time
 import uuid
-from urllib.parse import urlsplit
+from urllib.error import HTTPError
+from urllib.request import HTTPRedirectHandler, Request, build_opener
+
+
+class NoRedirect(HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
+def open_request(url, method, headers, body, timeout):
+    """Use the host proxy settings without following credential-bearing redirects."""
+    request = Request(url, data=body, headers=headers, method=method)
+    try:
+        return build_opener(NoRedirect).open(request, timeout=timeout)
+    except HTTPError as response:
+        return response
 
 
 def image_count(value):
@@ -71,15 +85,12 @@ class Handler(BaseHTTPRequestHandler):
             with relay.audit_lock, relay.audit.open('a') as log:
                 log.write(json.dumps(event)+'\n')
             headers = {'Content-Type': 'application/json', **relay.credential.headers()}
-            url = urlsplit(relay.credential.endpoint)
-            cls = http.client.HTTPSConnection if url.scheme == 'https' else http.client.HTTPConnection
-            upstream = cls(url.hostname, url.port, timeout=900)
-            upstream.request('POST', url.path.rstrip('/')+'/chat/completions',
-                             body=json.dumps(body).encode(), headers=headers)
-            response = upstream.getresponse()
+            upstream = open_request(relay.credential.endpoint.rstrip('/')+'/chat/completions',
+                                    'POST', headers, json.dumps(body).encode(), 900)
+            response = upstream
             status = response.status
             self.send_response(response.status)
-            self.send_header('Content-Type', response.getheader('Content-Type', 'application/json'))
+            self.send_header('Content-Type', response.headers.get('Content-Type', 'application/json'))
             self.end_headers()
             response_started, pending = True, b''
             while chunk := response.read1(65536):

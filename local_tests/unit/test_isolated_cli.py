@@ -1,17 +1,52 @@
 """Security and lifecycle contracts shared by optional native coding agents."""
 from dataclasses import replace
 import importlib
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 from pathlib import Path
 import subprocess
 import sys
+import threading
 
 import pytest
 
 from test_controller_backend import configuration
 from harness.backends import NAMES, PROVIDERS, get
 from harness.isolated_cli.credentials import Credential
-from harness.isolated_cli.relay import image_count, prepare_request
+from harness.isolated_cli.relay import image_count, open_request, prepare_request
+
+
+@pytest.mark.parametrize('status', [200, 401, 302])
+def test_host_transport_uses_proxy_preserves_errors_and_rejects_redirects(monkeypatch, status):
+    sent = []
+    class Proxy(BaseHTTPRequestHandler):
+        def log_message(self, *_):
+            pass
+        def do_POST(self):
+            sent.append((self.path, self.headers['Authorization'],
+                         self.rfile.read(int(self.headers['Content-Length']))))
+            self.send_response(status)
+            self.send_header('Content-Type', 'application/json')
+            if status == 302:
+                self.send_header('Location', 'http://other.invalid/credential-leak')
+            self.end_headers()
+            self.wfile.write(b'{"fixture":true}')
+    server = ThreadingHTTPServer(('127.0.0.1', 0), Proxy)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    monkeypatch.setenv('http_proxy', f'http://127.0.0.1:{server.server_port}')
+    monkeypatch.setenv('no_proxy', '')
+    monkeypatch.setenv('NO_PROXY', '')
+    try:
+        with open_request('http://upstream.invalid/v1/chat/completions', 'POST',
+                          {'Authorization': 'Bearer fixture-key'}, b'{}', 5) as response:
+            assert response.status == status
+            assert response.read1(1024) == b'{"fixture":true}'
+        assert sent == [('http://upstream.invalid/v1/chat/completions', 'Bearer fixture-key', b'{}')]
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
 
 @pytest.fixture(params=('kimi',))
 def backend(request):
