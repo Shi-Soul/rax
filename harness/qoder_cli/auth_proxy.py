@@ -8,7 +8,8 @@ import threading
 from urllib.parse import urlsplit
 
 from harness.claude_cli.login import private_text
-from harness.isolated_cli.relay import Server, open_request
+from harness.isolated_cli.relay import Server
+from .http_transport import open_request
 
 HOSTS = {'openapi.qoder.com.cn', 'gateway.qoder.com.cn'}
 GET_PATHS = {'/api/v1/userinfo', '/api/v3/user/status', '/api/v2/user/plan',

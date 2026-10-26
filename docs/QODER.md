@@ -1,7 +1,7 @@
 # Qoder CLI CN on DexJoCo
 
 The `qoder` backend uses the official `@qodercn-ai/qoderclicn` package at version
-`1.1.78`. Qoder runs its own agent loop. RAX supplies the existing workspace,
+`1.1.78`. The host also needs `curl`. Qoder runs its own agent loop. RAX supplies the existing workspace,
 robot MCP service, model request relay and code formal evaluation.
 
 Use `--agent-provider qoder-account` to select Qoder's built-in models, including
@@ -34,7 +34,12 @@ and account metadata requests, including model catalogs and organization policie
 In account mode, the same socket also permits the two native Qoder inference
 routes. It preserves encoded request bytes and streams responses. A hook checks
 the selected model and reasoning effort before the vendor encodes each request;
-the audit records only model, effort and image counts. External model requests use
+the audit records only model, effort and image counts. The account relay uses curl
+to receive errors while uploading large requests. This preserves HTTP 413 responses
+so Qoder can compress its own context instead of retrying a false upload timeout.
+Credentials and encoded request bodies pass through anonymous file descriptors;
+they are absent from command arguments. User curl settings and redirects are disabled.
+External model requests use
 the existing model relay. Both host relays use `HTTP_PROXY`, `HTTPS_PROXY` and `NO_PROXY`
 settings. They do not follow HTTP redirects with account or model credentials.
 

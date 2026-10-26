@@ -9,6 +9,8 @@ from pathlib import Path
 import shutil
 import socket
 import subprocess
+import threading
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from types import SimpleNamespace
 from urllib.parse import urlsplit
 
@@ -147,6 +149,96 @@ def test_builtin_inference_preserves_encoded_body_and_stream(tmp_path, monkeypat
         assert response.getheader('X-Request-Id') == 'fixture-request'
         assert response.read() == stream
         connection.close()
+
+
+def test_upload_returns_early_http_error_without_waiting_for_body():
+    release = threading.Event()
+    class RejectUpload(BaseHTTPRequestHandler):
+        def log_message(self, *_):
+            pass
+
+        def do_POST(self):
+            self.send_response(413)
+            self.send_header('Content-Length', '9')
+            self.end_headers()
+            self.wfile.write(b'too large')
+            self.wfile.flush()
+            release.wait(5)  # The server refuses to consume the request body.
+
+    server = ThreadingHTTPServer(('127.0.0.1', 0), RejectUpload)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        response = auth_proxy.open_request(f'http://127.0.0.1:{server.server_port}/', 'POST',
+                                          {'Content-Type': 'application/json'}, b'x'*(8*1024**2), 1)
+        try:
+            assert response.status == 413
+            assert response.read() == b'too large'
+        finally:
+            response.close()
+    finally:
+        release.set()
+        server.shutdown()
+        server.server_close()
+        thread.join()
+
+
+@pytest.mark.parametrize('status', [200, 307])
+def test_account_http_preserves_binary_stream_and_refuses_redirects(tmp_path, monkeypatch, status):
+    release, received = threading.Event(), []
+    body = b'\x00\xffopaque-vendor-body\r\n'*4096
+    class Endpoint(BaseHTTPRequestHandler):
+        protocol_version = 'HTTP/1.1'
+
+        def log_message(self, *_):
+            pass
+
+        def do_POST(self):
+            received.append((self.path, self.headers['Authorization'],
+                             self.rfile.read(int(self.headers['Content-Length']))))
+            self.send_response(status)
+            if status == 307:
+                self.send_header('Location', '/must-not-receive-credentials')
+                self.send_header('Content-Length', '0')
+                self.end_headers()
+                return
+            self.send_header('Transfer-Encoding', 'chunked')
+            self.end_headers()
+            self.wfile.write(b'4\r\ndata\r\n')
+            self.wfile.flush()
+            release.wait(5)
+            self.wfile.write(b'4\r\n:end\r\n0\r\n\r\n')
+            self.wfile.flush()
+
+    server = ThreadingHTTPServer(('127.0.0.1', 0), Endpoint)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    # Verify both host proxy support and that user curl settings cannot enable redirects.
+    monkeypatch.setenv('http_proxy', f'http://127.0.0.1:{server.server_port}')
+    monkeypatch.setenv('NO_PROXY', '')
+    monkeypatch.setenv('no_proxy', '')
+    monkeypatch.setenv('CURL_HOME', str(tmp_path))
+    (tmp_path/'.curlrc').write_text('location\n')
+    url = 'http://qoder-fixture.invalid/request'
+    try:
+        response = auth_proxy.open_request(url, 'POST', {'Authorization': 'fixture-secret'}, body, 3)
+        try:
+            assert response.status == status
+            if status == 200:
+                assert response.read1(64) == b'data'  # Available before the response finishes.
+                release.set()
+                assert response.read() == b':end'
+            else:
+                assert response.read() == b''
+            assert received == [(url, 'fixture-secret', body)]
+            assert all('fixture-secret' not in arg for arg in response.process.args)
+        finally:
+            response.close()
+    finally:
+        release.set()
+        server.shutdown()
+        server.server_close()
+        thread.join()
 
 
 def test_real_qoder_login_reaches_account_relay(tmp_path, monkeypatch):
