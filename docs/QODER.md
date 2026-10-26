@@ -4,23 +4,35 @@ The `qoder` backend uses the official `@qodercn-ai/qoderclicn` package at versio
 `1.1.78`. Qoder runs its own agent loop. RAX supplies the existing workspace,
 robot MCP service, model request relay and code formal evaluation.
 
-Qoder requires a Qoder account even when a custom provider supplies the model.
-Use a dedicated experiment account whose plan enables custom providers. Create
-a personal access token through [Qoder account integrations](https://qoder.cn/account/integrations).
-Keep it in a file named `qoder-pat`, with mode `0600`, inside an experiment
-directory with mode `0700`. Pass that directory as `--agent-auth-home`.
-Pass the OpenRouter API key separately as `--agent-key-file`.
+Qoder CLI CN requires a Chinese Qoder account even when a custom provider
+supplies the model. Use a dedicated experiment login directory with mode `0700`.
+After installation, sign in through the browser:
 
-The model key and Qoder personal access token stay on the host. The CLI receives
-the short-lived account credentials issued by Qoder. The CLI and its shell and
-file tools run inside RAX's existing bubblewrap boundary. They cannot reach the
-network directly, see the GPU, or read the operator's home. A separate Unix
-socket permits only Qoder login, token refresh and catalog requests. It cannot
-send inference requests to Qoder. Model requests go through the existing relay,
-which enforces the selected model and reasoning effort.
+```bash
+QODERCN_CONFIG_DIR=/private/experiment-qoder \
+  node runtime/agent-backends/qoder-cli/tools/qodercn-1.1.78/node_modules/@qodercn-ai/qoderclicn/bundle/qoderclicn.js login
+```
+
+Pass that directory as `--agent-auth-home`. RAX mounts only its `.auth` store
+inside the CLI's private home, so Qoder can read and refresh its browser login.
+The rest of the operator's home stays hidden. The account must permit custom
+providers. Pass the OpenRouter API key separately as `--agent-key-file`.
+
+For unattended PAT authentication, create a personal access token through
+[Qoder CN account integrations](https://qoder.cn/account/integrations). Store it
+in a `qoder-pat` file with mode `0600` in the auth directory. A PAT takes
+precedence over browser login and stays on the host. The CLI receives only the
+account credentials issued by Qoder.
+
+The model key stays on the host. The CLI and its shell and file tools run inside
+RAX's existing bubblewrap boundary. They cannot reach the network directly or
+see the GPU. A separate Unix socket permits only Qoder CN login, token refresh
+and catalog requests. It cannot send inference requests to Qoder. Model requests
+go through the existing relay, which enforces the selected model and reasoning
+effort.
 
 Qoder's bundled HTTP client needs a separate transport adapter. A Node.js load
-hook checks the `1.1.78` bundle's SHA-256 hash and routes its HTTP entry point
+hook checks the CN `1.1.78` bundle's SHA-256 hash and routes its HTTP entry point
 through the same Unix sockets. It does not change the installed package. An
 unknown bundle is rejected before execution. The startup regression test runs
 the real CLI against a local authentication fixture; live account and model

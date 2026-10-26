@@ -12,11 +12,16 @@ from . import auth_proxy, spec
 
 def token_file(auth_home):
     if not auth_home:
-        raise ValueError('Qoder requires --agent-auth-home containing a private qoder-pat file')
+        raise ValueError('Qoder requires --agent-auth-home with browser login or a private qoder-pat file')
     home = Path(auth_home).resolve()
     if not home.is_dir() or home.stat().st_uid != os.getuid() or home.stat().st_mode & 0o077:
         raise ValueError('Qoder experiment auth home must belong to this user and have mode 0700')
     path = home/'qoder-pat'
+    if not path.exists():
+        for name in ('user', 'machine_id'):
+            if not private_text(home/'.auth'/name).strip():
+                raise ValueError('Qoder browser login is incomplete; run qodercn login first')
+        return None
     if not private_text(path).strip():
         raise ValueError('Qoder personal access token is empty')
     return path
@@ -33,6 +38,17 @@ class QoderAdapter(Adapter):
         token_file(credential.auth_home)
         return credential
 
+    def sandbox(self, config, deployed, command):
+        args = super().sandbox(config, deployed, command)
+        credential = self.credential(deployed)
+        if token_file(credential.auth_home) is None:
+            # Only this experiment's browser login store is shared with the CLI.
+            destination = Path(deployed[self.HOME_KEY])/'.auth'
+            destination.mkdir(mode=0o700, exist_ok=True)
+            position = args.index('--chdir')
+            args[position:position] = ['--bind', str(Path(credential.auth_home)/'.auth'), str(destination)]
+        return args
+
     def agent_command(self, config, deployed, *, prompt, interactive=False, json_output=False):
         command = super().agent_command(config, deployed, prompt=prompt,
                                        interactive=interactive, json_output=json_output)
@@ -46,6 +62,8 @@ class QoderAdapter(Adapter):
 
     def agent_environment(self, config, deployed, socket):
         env = super().agent_environment(config, deployed, socket)
+        if token_file(self.credential(deployed).auth_home) is None:
+            del env['QODERCN_PERSONAL_ACCESS_TOKEN']
         env.update(NODE_OPTIONS=f'--import={Path(__file__).with_name("transport.mjs")}',
                    RAX_QODER_ENTRY=str(deployed['binary']),
                    RAX_QODER_AUTH_SOCKET=str(Path(socket).parent/'qoder-auth.sock'))

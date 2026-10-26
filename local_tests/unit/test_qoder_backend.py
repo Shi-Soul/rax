@@ -37,8 +37,22 @@ def test_auth_is_required_before_workspace_creation(tmp_path):
         qoder.token_file(auth)
 
 
+def test_browser_auth_store_requires_private_credential_files(tmp_path):
+    auth = tmp_path/'auth'
+    auth.mkdir(mode=0o700)
+    store = auth/'.auth'
+    store.mkdir(mode=0o700)
+    private_file(store/'user', 'encrypted-browser-credential')
+    machine = private_file(store/'machine_id', 'fixture-machine-id')
+    assert qoder.token_file(auth) is None
+    machine.chmod(0o644)
+    with pytest.raises(ValueError, match='private'):
+        qoder.token_file(auth)
+
+
 @pytest.mark.parametrize('url,method', [
     ('https://openapi.qoder.com.cn/api/v1/jobToken/exchange', 'POST'),
+    ('https://openapi.qoder.com.cn/api/v1/deviceToken/refresh', 'POST'),
     ('https://openapi.qoder.com.cn/api/v3/user/status', 'GET'),
     ('https://gateway.qoder.com.cn/api/v2/model/list?Encode=1', 'GET'),
     ('https://openapi.qoder.com.cn/api/v1/organizations/org-123/tags', 'GET'),
@@ -56,6 +70,7 @@ def test_account_routes(url, method):
     ('https://gateway.qoder.com.cn/api/v2/service/ask', 'POST'),
     ('https://openapi.qoder.com.cn/api/v2/config/updateDataPolicy', 'POST'),
     ('https://openapi.qoder.com.cn/api/v1/userinfo', 'DELETE'),
+    ('https://openapi.qoder.sh/api/v1/userinfo', 'GET'),
 ])
 def test_account_connection_cannot_make_model_calls_or_arbitrary_requests(url, method):
     with pytest.raises(ValueError, match='authentication and catalog'):
@@ -153,14 +168,20 @@ def test_changed_qoder_bundle_is_rejected_before_execution(tmp_path):
     assert 'MUST_NOT_RUN' not in result.stdout
 
 
-def test_real_qoder_binary_and_sandbox(tmp_path):
+@pytest.mark.parametrize('browser_login', [False, True])
+def test_real_qoder_binary_and_sandbox(tmp_path, browser_login):
     binary = spec.default_binary()
     if not binary.is_file() or not shutil.which('bwrap') or not shutil.which('node'):
         pytest.skip('Pinned Qoder CLI, node and bubblewrap are required')
     config = replace(configuration(tmp_path/'trial'), agent_cli='qoder', agent_effort='max')
     auth = tmp_path/'auth'
     auth.mkdir(mode=0o700)
-    private_file(auth/'qoder-pat', 'private-qoder-pat')
+    if browser_login:
+        (auth/'.auth').mkdir(mode=0o700)
+        private_file(auth/'.auth/user', 'encrypted-browser-credential')
+        private_file(auth/'.auth/machine_id', 'fixture-machine-id')
+    else:
+        private_file(auth/'qoder-pat', 'private-qoder-pat')
     key = private_file(tmp_path/'provider.key', 'private-model-key')
     args = SimpleNamespace(backend='qoder', binary=binary, provider='openrouter',
                            model=spec.MODEL, key_file=key, auth_home=auth, base_url=None)
@@ -169,6 +190,7 @@ def test_real_qoder_binary_and_sandbox(tmp_path):
     environment = qoder.agent_environment(config, deployed, sock)
     assert 'private-qoder-pat' not in json.dumps(environment)
     assert 'private-model-key' not in json.dumps(environment)
+    assert ('QODERCN_PERSONAL_ACCESS_TOKEN' not in environment) == browser_login
     settings = json.loads((deployed['qoder_home']/'settings.json').read_text())
     assert settings['model']['name'] == 'rax/'+spec.MODEL
     assert settings['model']['reasoningEffort'] == 'max'
@@ -180,7 +202,8 @@ def test_real_qoder_binary_and_sandbox(tmp_path):
     result = subprocess.run([*command, '--help'], env=environment, capture_output=True, text=True, timeout=30)
     assert result.returncode == 0, result.stderr[-1000:]
     assert '--reasoning-effort' in result.stdout
-    protected = [str(key), str(auth/'qoder-pat'), str(agent_host.PROJECT/'README.md')]
+    protected = [str(key), str(auth/'.auth/user' if browser_login else auth/'qoder-pat'),
+                 str(agent_host.PROJECT/'README.md')]
     program = f'''
 from pathlib import Path
 import socket
@@ -198,6 +221,14 @@ else:
     raise AssertionError('Backend source is writable')
 Path('output/isolated.txt').write_text('OK')
 '''
+    if browser_login:
+        program += f'''
+store = Path({str(deployed['qoder_home']/'.auth')!r})
+assert (store/'user').read_text() == 'encrypted-browser-credential'
+(store/'user').write_text('refreshed-browser-credential')
+'''
     check = qoder.sandbox(config, deployed, [str(agent_host.agent_python()), '-I', '-c', program])
     subprocess.run(check, env=environment, capture_output=True, text=True, timeout=15, check=True)
     assert (deployed['workspace']/'output/isolated.txt').read_text() == 'OK'
+    if browser_login:
+        assert (auth/'.auth/user').read_text() == 'refreshed-browser-credential'

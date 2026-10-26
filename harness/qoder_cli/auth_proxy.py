@@ -13,7 +13,7 @@ from harness.isolated_cli.relay import Server
 HOSTS = {'openapi.qoder.com.cn', 'gateway.qoder.com.cn'}
 GET_PATHS = {'/api/v1/userinfo', '/api/v3/user/status', '/api/v2/user/plan',
              '/api/v2/model/list', '/algo/api/v2/byok/config', '/api/v2/config/getDataPolicy'}
-POST_PATHS = {'/api/v1/jobToken/exchange', '/api/v1/jobToken/refresh'}
+POST_PATHS = {'/api/v1/jobToken/exchange', '/api/v1/jobToken/refresh', '/api/v1/deviceToken/refresh'}
 
 
 def target(url, method):
@@ -43,6 +43,8 @@ class Handler(BaseHTTPRequestHandler):
             url = target(request['url'], request['method'])
             body = request['body']
             if url.path == '/api/v1/jobToken/exchange':
+                if self.server.token_file is None:
+                    raise ValueError('This session uses browser authentication')
                 body = json.loads(body)
                 if body['personal_token'] != 'rax-session-transport':
                     raise ValueError('Expected the session credential placeholder')
