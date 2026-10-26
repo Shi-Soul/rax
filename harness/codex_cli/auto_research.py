@@ -462,6 +462,8 @@ def start_frontend(config, deployed, socket, log, *, key_file=None, timeout=30):
     if key_file:  # gemini_generate stays brokered by the host frontend.
         args += ['--key-file', str(key_file)]
     environment = {k: v for k, v in os.environ.items() if not k.startswith('RAX_')}
+    from services.storage_root import ENVIRONMENT, artifact_root
+    environment[ENVIRONMENT] = str(artifact_root())
     environment['PYTHONPATH'] = str(PROJECT)
     server = subprocess.Popen(args, cwd=PROJECT, env=environment, stdout=log, stderr=log, start_new_session=True)
     deadline = time.monotonic()+timeout

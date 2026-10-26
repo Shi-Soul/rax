@@ -8,7 +8,7 @@ import subprocess
 
 from harness import agent_host
 from harness.cli_runtime import (LOGIN_FILE, PID_FILE, expose_published,
-    native_session, prepare_workspace, reference_sources, refresh_reviews, start_frontend, stop_services)
+    native_session, open_frontend_log, prepare_workspace, reference_sources, refresh_reviews, start_frontend, stop_services)
 from harness.isolated_cli.credentials import Credential
 from harness.isolated_cli.relay import serve
 from services.controller.storage import persist
@@ -166,7 +166,7 @@ class Adapter:
         self.write_home(config, deployed, socket)
         server = agent = None
         home = Path(deployed[self.HOME_KEY])
-        with (config.root/'frontend.log').open('ab') as log, self.relay(config, deployed):
+        with open_frontend_log(config.root) as log, self.relay(config, deployed):
             try:
                 server = start_frontend(config, deployed, socket, log, key_file=gemini_key_file)
                 def run(text):

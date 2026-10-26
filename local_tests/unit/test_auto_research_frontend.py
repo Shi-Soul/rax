@@ -694,11 +694,16 @@ def test_a_frontend_that_fails_to_start_reports_its_own_error(tmp_path, monkeypa
     config.root.mkdir(parents=True)
     deployed = {'configuration': tmp_path/'config.json', 'workspace': tmp_path}
     ended, sessions = [], []
+    artifact_root = tmp_path/'separate-storage'
+    monkeypatch.setenv('RAX_ARTIFACT_ROOT', str(artifact_root))
+    monkeypatch.setenv('RAX_PRIVATE_FIXTURE', 'must-not-be-forwarded')
 
     class Frontend:
         returncode = None
 
         def __init__(self, args, *, stdout, **kwargs):
+            assert kwargs['env']['RAX_ARTIFACT_ROOT'] == str(artifact_root)
+            assert 'RAX_PRIVATE_FIXTURE' not in kwargs['env']
             sessions.append(kwargs.get('start_new_session'))
             stdout.write(b"Traceback (most recent call last):\n  File \"frontend.py\"\n"
                          b"ValueError: A trial's saved configuration cannot change\n")

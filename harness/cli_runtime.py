@@ -8,6 +8,7 @@ CALL_SECONDS = lifecycle.CALL_SECONDS
 LOGIN_FILE, PID_FILE = 'agent-login.json', 'agent.pid'
 prepare_workspace = lifecycle.prepare_workspace
 refresh_reviews = lifecycle.refresh_reviews
+open_frontend_log = lifecycle.open_frontend_log
 
 if not CONTAINER:
     from harness.codex_cli.auto_research import (expose_published, native_session,
