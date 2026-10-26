@@ -1,6 +1,5 @@
 """Permit Qoder login and catalog requests without exposing the operator's PAT."""
 from contextlib import contextmanager
-import http.client
 from http.server import BaseHTTPRequestHandler
 import json
 import re
@@ -8,22 +7,28 @@ import threading
 from urllib.parse import urlsplit
 
 from harness.claude_cli.login import private_text
-from harness.isolated_cli.relay import Server
+from harness.isolated_cli.relay import Server, open_request
 
 HOSTS = {'openapi.qoder.com.cn', 'gateway.qoder.com.cn'}
 GET_PATHS = {'/api/v1/userinfo', '/api/v3/user/status', '/api/v2/user/plan',
-             '/api/v2/model/list', '/algo/api/v2/byok/config', '/api/v2/config/getDataPolicy'}
-POST_PATHS = {'/api/v1/jobToken/exchange', '/api/v1/jobToken/refresh', '/api/v1/deviceToken/refresh'}
+             '/api/v2/model/list', '/algo/api/v2/byok/config', '/api/v2/config/getDataPolicy',
+             '/algo/api/v2/model/list', '/algo/api/v2/config/getDataPolicy',
+             '/api/v3/service/region/endpoints', '/api/v5/service/region/endpoints',
+             '/algo/api/v3/service/region/endpoints', '/algo/api/v5/service/region/endpoints'}
+POST_PATHS = {'/api/v1/jobToken/exchange', '/api/v1/jobToken/refresh',
+              '/api/v1/deviceToken/refresh', '/api/v1/qcs/config/resolve'}
 
 
 def target(url, method):
     parsed = urlsplit(url)
     allowed = (method == 'GET' and (parsed.path in GET_PATHS or
-               re.fullmatch(r'/api/v1/organizations/[A-Za-z0-9_-]+/tags', parsed.path))) or (
+               re.fullmatch(r'/api/v1/organizations/[A-Za-z0-9_-]+/tags', parsed.path) or
+               re.fullmatch(r'/sash/api/v1/organizations/[A-Za-z0-9_-]+/'
+                            r'(plugins/effective|mcp-governance/policy|policies)', parsed.path))) or (
                method == 'POST' and parsed.path in POST_PATHS and parsed.hostname == 'openapi.qoder.com.cn')
     if (parsed.scheme != 'https' or parsed.hostname not in HOSTS or parsed.port not in (None, 443)
             or parsed.username or parsed.password or parsed.fragment or not allowed):
-        raise ValueError('Only Qoder authentication and catalog endpoints are allowed')
+        raise ValueError('Only Qoder authentication and account metadata endpoints are allowed')
     return parsed
 
 
@@ -52,15 +57,14 @@ class Handler(BaseHTTPRequestHandler):
                 body = json.dumps(body)
             headers = {k: v for k, v in request['headers'].items()
                        if k.lower() not in ('host', 'content-length', 'connection', 'accept-encoding')}
-            upstream = http.client.HTTPSConnection(url.hostname, timeout=60)
-            upstream.request(request['method'], url.path+('?' + url.query if url.query else ''),
-                             body=body.encode() if body else None, headers=headers)
-            response = upstream.getresponse()
+            upstream = open_request(request['url'], request['method'], headers,
+                                    body.encode() if body else None, 60)
+            response = upstream
             data = response.read(8*1024**2+1)
             if len(data) > 8*1024**2:
                 raise ValueError('Qoder response exceeds the limit')
             self.send_response(response.status)
-            self.send_header('Content-Type', response.getheader('Content-Type', 'application/json'))
+            self.send_header('Content-Type', response.headers.get('Content-Type', 'application/json'))
             self.send_header('Content-Length', str(len(data)))
             self.end_headers()
             self.wfile.write(data)

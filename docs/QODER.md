@@ -16,7 +16,10 @@ QODERCN_CONFIG_DIR=/private/experiment-qoder \
 Pass that directory as `--agent-auth-home`. RAX mounts only its `.auth` store
 inside the CLI's private home, so Qoder can read and refresh its browser login.
 The rest of the operator's home stays hidden. The account must permit custom
-providers. Pass the OpenRouter API key separately as `--agent-key-file`.
+providers. Browser login alone does not grant this access. If the CLI reports
+`Custom Provider access is not allowed` or `You do not have access to this model
+service`, enable custom-provider access for the account before you start the
+experiment. Pass the OpenRouter API key separately as `--agent-key-file`.
 
 For unattended PAT authentication, create a personal access token through
 [Qoder CN account integrations](https://qoder.cn/account/integrations). Store it
@@ -27,14 +30,18 @@ account credentials issued by Qoder.
 The model key stays on the host. The CLI and its shell and file tools run inside
 RAX's existing bubblewrap boundary. They cannot reach the network directly or
 see the GPU. A separate Unix socket permits only Qoder CN login, token refresh
-and catalog requests. It cannot send inference requests to Qoder. Model requests
-go through the existing relay, which enforces the selected model and reasoning
-effort.
+and account metadata requests, including model catalogs and organization policies.
+It cannot send inference requests to Qoder. Model requests go through the
+existing relay, which enforces the selected model and reasoning
+effort. Both host relays use the host's `HTTP_PROXY`, `HTTPS_PROXY` and `NO_PROXY`
+settings. They do not follow HTTP redirects with account or model credentials.
 
 Qoder's bundled HTTP client needs a separate transport adapter. A Node.js load
 hook checks the CN `1.1.78` bundle's SHA-256 hash and routes its HTTP entry point
-through the same Unix sockets. It does not change the installed package. An
-unknown bundle is rejected before execution. The startup regression test runs
+through the same Unix sockets. Embedded `data:` URLs use the native fetch API
+to load the CLI's WebAssembly without network access. The hook does not change
+the installed package. An unknown bundle is rejected before execution.
+The startup regression test runs
 the real CLI against a local authentication fixture; live account and model
 validation still requires the credentials below.
 

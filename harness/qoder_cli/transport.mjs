@@ -1,14 +1,17 @@
 // Model calls use the existing relay; Qoder login uses a separate restricted relay.
-import '../isolated_cli/transport.mjs';
 import http from 'node:http';
 import { Readable } from 'node:stream';
 import { createHash } from 'node:crypto';
 import { registerHooks } from 'node:module';
 import { pathToFileURL } from 'node:url';
 
+const localFetch = globalThis.fetch;
+await import('../isolated_cli/transport.mjs');
 const modelFetch = globalThis.fetch;
 globalThis.fetch = async function(input, init = {}) {
   const request = new Request(input, init);
+  // The vendor loads embedded WebAssembly from data URLs; these use no network.
+  if (new URL(request.url).protocol === 'data:') return localFetch(request);
   if (new URL(request.url).origin === 'http://rax-model.invalid') return modelFetch(request);
   const body = Buffer.from(JSON.stringify({url: request.url, method: request.method,
     headers: Object.fromEntries(request.headers), body: await request.text()}));

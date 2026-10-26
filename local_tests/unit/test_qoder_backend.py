@@ -8,6 +8,7 @@ import shutil
 import socket
 import subprocess
 from types import SimpleNamespace
+from urllib.parse import urlsplit
 
 import pytest
 
@@ -55,7 +56,11 @@ def test_browser_auth_store_requires_private_credential_files(tmp_path):
     ('https://openapi.qoder.com.cn/api/v1/deviceToken/refresh', 'POST'),
     ('https://openapi.qoder.com.cn/api/v3/user/status', 'GET'),
     ('https://gateway.qoder.com.cn/api/v2/model/list?Encode=1', 'GET'),
+    ('https://gateway.qoder.com.cn/algo/api/v2/model/list?Encode=1', 'GET'),
+    ('https://gateway.qoder.com.cn/algo/api/v5/service/region/endpoints', 'GET'),
     ('https://openapi.qoder.com.cn/api/v1/organizations/org-123/tags', 'GET'),
+    ('https://openapi.qoder.com.cn/sash/api/v1/organizations/org-123/mcp-governance/policy', 'GET'),
+    ('https://openapi.qoder.com.cn/api/v1/qcs/config/resolve', 'POST'),
 ])
 def test_account_routes(url, method):
     assert auth_proxy.target(url, method).scheme == 'https'
@@ -73,23 +78,18 @@ def test_account_routes(url, method):
     ('https://openapi.qoder.sh/api/v1/userinfo', 'GET'),
 ])
 def test_account_connection_cannot_make_model_calls_or_arbitrary_requests(url, method):
-    with pytest.raises(ValueError, match='authentication and catalog'):
+    with pytest.raises(ValueError, match='authentication and account metadata'):
         auth_proxy.target(url, method)
 
 
 def test_pat_is_inserted_only_by_host_proxy(tmp_path, monkeypatch):
     sent = []
-    class Upstream:
-        def __init__(self, host, timeout):
-            assert host == 'openapi.qoder.com.cn'
-        def request(self, method, path, body, headers):
-            sent.append(json.loads(body))
-        def getresponse(self):
-            return SimpleNamespace(status=200, getheader=lambda *args: 'application/json',
-                                   read=lambda size: b'{"token":"issued-session-token"}')
-        def close(self):
-            pass
-    monkeypatch.setattr(auth_proxy.http.client, 'HTTPSConnection', Upstream)
+    def upstream(url, method, headers, body, timeout):
+        assert urlsplit(url).hostname == 'openapi.qoder.com.cn'
+        sent.append(json.loads(body))
+        return SimpleNamespace(status=200, headers={'Content-Type': 'application/json'},
+                               read=lambda size: b'{"token":"issued-session-token"}', close=lambda: None)
+    monkeypatch.setattr(auth_proxy, 'open_request', upstream)
     token = private_file(tmp_path/'qoder-pat', 'operator-private-pat')
     path = tmp_path/'auth.sock'
     with auth_proxy.serve(path, token):
@@ -123,17 +123,12 @@ def test_real_qoder_login_reaches_account_relay(tmp_path, monkeypatch):
     if not binary.is_file() or not shutil.which('bwrap') or not shutil.which('node'):
         pytest.skip('Pinned Qoder CLI, node and bubblewrap are required')
     sent = []
-    class RejectLogin:
-        def __init__(self, host, timeout):
-            self.host = host
-        def request(self, method, path, body, headers):
-            sent.append((self.host, method, path, json.loads(body)))
-        def getresponse(self):
-            return SimpleNamespace(status=401, getheader=lambda *args: 'application/json',
-                                   read=lambda size: b'{"error":"invalid fixture credential"}')
-        def close(self):
-            pass
-    monkeypatch.setattr(auth_proxy.http.client, 'HTTPSConnection', RejectLogin)
+    def reject_login(url, method, headers, body, timeout):
+        parsed = urlsplit(url)
+        sent.append((parsed.hostname, method, parsed.path, json.loads(body)))
+        return SimpleNamespace(status=401, headers={'Content-Type': 'application/json'},
+                               read=lambda size: b'{"error":"invalid fixture credential"}', close=lambda: None)
+    monkeypatch.setattr(auth_proxy, 'open_request', reject_login)
     config = replace(configuration(tmp_path/'trial'), agent_cli='qoder', agent_effort='max')
     auth = tmp_path/'auth'
     auth.mkdir(mode=0o700)
@@ -166,6 +161,21 @@ def test_changed_qoder_bundle_is_rejected_before_execution(tmp_path):
     assert result.returncode != 0
     assert 'unsupported Qoder bundle' in result.stderr
     assert 'MUST_NOT_RUN' not in result.stdout
+
+
+def test_embedded_data_url_does_not_require_a_network_relay(tmp_path):
+    node = shutil.which('node')
+    if not node:
+        pytest.skip('Node.js is required')
+    transport = Path(qoder.__file__).with_name('transport.mjs')
+    script = '''
+import assert from 'node:assert/strict';
+const response = await fetch('data:application/octet-stream;base64,AGFzbQEAAAA=');
+assert.equal(WebAssembly.validate(await response.arrayBuffer()), true);
+'''
+    subprocess.run([node, '--import', str(transport), '--input-type=module', '-e', script],
+                   env={**os.environ, 'RAX_QODER_ENTRY': str(tmp_path/'unused-entry.mjs')},
+                   capture_output=True, text=True, timeout=10, check=True)
 
 
 @pytest.mark.parametrize('browser_login', [False, True])
