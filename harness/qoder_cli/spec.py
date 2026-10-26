@@ -7,13 +7,16 @@ from services.controller.storage import persist
 NAME, VERSION = 'qoder', '1.1.78'
 PACKAGE = '@qodercn-ai/qoderclicn'
 ENTRY = 'bundle/qoderclicn.js'
-ACCOUNT = None
-PROVIDERS = ('openrouter', 'custom')
+ACCOUNT = 'qoder-account'
+ACCOUNT_ENDPOINT = 'https://gateway.qoder.com.cn/model/v1'
+PROVIDERS = (ACCOUNT, 'openrouter', 'custom')
 MODEL = 'deepseek/deepseek-v4.1-flash-1017'
 READABLE_PATHS = (Path(__file__).resolve().parent,)
 
 
 def model(provider):
+    if provider == ACCOUNT:
+        return 'DeepSeek-Flash'
     if provider != 'openrouter':
         raise ValueError('Qoder custom endpoints require an explicit --agent-model')
     return MODEL
@@ -31,8 +34,9 @@ def installation(binary):
 
 
 def write_home(config, home, selected_model, socket):
-    persist(home/'settings.json', {
-        'model': {'name': 'rax/'+selected_model, 'reasoningEffort': config.agent_effort},
+    settings = {
+        'model': {'name': selected_model if config.agent_provider == ACCOUNT else 'rax/'+selected_model,
+                  'reasoningEffort': config.agent_effort},
         'providers': {'rax': {'type': 'openai-compatible', 'protocol': 'openai',
             'baseUrl': 'http://rax-model.invalid/v1', 'apiKey': 'rax-session-transport',
             'model': selected_model, 'models': [{'model': selected_model,
@@ -45,7 +49,10 @@ def write_home(config, home, selected_model, socket):
         'privacy': {'usageStatisticsEnabled': False},
         'aiCodeStatistics': {'enabled': False},
         'context': {'fileName': 'AGENTS.md'},
-        'mcp': {'timeout': 600000}})
+        'mcp': {'timeout': 600000}}
+    if config.agent_provider == ACCOUNT:
+        del settings['providers']
+    persist(home/'settings.json', settings)
     persist(home/'mcp.json', {'mcpServers': {'auto_research': {
         'command': str(agent_host.agent_python()),
         'args': ['-I', '/tmp/rax-bridge/mcp_bridge.py', str(socket)]}}})

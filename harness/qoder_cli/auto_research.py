@@ -1,5 +1,5 @@
 """Qoder uses the shared native lifecycle and a restricted account connection."""
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 import json
 import os
 from pathlib import Path
@@ -56,7 +56,8 @@ class QoderAdapter(Adapter):
         command[command.index('--mcp-config')+1] = str(Path(deployed[self.HOME_KEY])/'mcp.json')
         login = json.loads(Path(deployed['login']).read_text())
         position = command.index('--print')
-        command[position:position] = ['--model', 'rax/'+login['model'],
+        model = login['model'] if login['provider'] == spec.ACCOUNT else 'rax/'+login['model']
+        command[position:position] = ['--model', model,
                                      '--reasoning-effort', config.agent_effort]
         return command
 
@@ -67,13 +68,19 @@ class QoderAdapter(Adapter):
         env.update(NODE_OPTIONS=f'--import={Path(__file__).with_name("transport.mjs")}',
                    RAX_QODER_ENTRY=str(deployed['binary']),
                    RAX_QODER_AUTH_SOCKET=str(Path(socket).parent/'qoder-auth.sock'))
+        if config.agent_provider == spec.ACCOUNT:
+            env.update(RAX_QODER_AUDIT=str(Path(deployed[self.HOME_KEY])/'request-audit.jsonl'),
+                       RAX_QODER_MODEL=json.loads(Path(deployed['login']).read_text())['model'],
+                       RAX_QODER_EFFORT=config.agent_effort)
         return env
 
     @contextmanager
     def relay(self, config, deployed):
         credential = self.credential(deployed)
-        with super().relay(config, deployed), auth_proxy.serve(
-                agent_host.socket_path(config.root).parent/'qoder-auth.sock', token_file(credential.auth_home)) as server:
+        builtin = credential.provider == spec.ACCOUNT
+        with (nullcontext() if builtin else super().relay(config, deployed)), auth_proxy.serve(
+                agent_host.socket_path(config.root).parent/'qoder-auth.sock',
+                token_file(credential.auth_home), inference=builtin) as server:
             yield server
 
 

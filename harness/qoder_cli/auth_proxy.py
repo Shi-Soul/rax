@@ -1,5 +1,6 @@
 """Permit Qoder login and catalog requests without exposing the operator's PAT."""
 from contextlib import contextmanager
+import base64
 from http.server import BaseHTTPRequestHandler
 import json
 import re
@@ -17,15 +18,17 @@ GET_PATHS = {'/api/v1/userinfo', '/api/v3/user/status', '/api/v2/user/plan',
              '/algo/api/v3/service/region/endpoints', '/algo/api/v5/service/region/endpoints'}
 POST_PATHS = {'/api/v1/jobToken/exchange', '/api/v1/jobToken/refresh',
               '/api/v1/deviceToken/refresh', '/api/v1/qcs/config/resolve'}
+MODEL_PATHS = {'/model/v1/chat/completions', '/algo/api/v2/service/pro/sse/agent_chat_generation'}
 
 
-def target(url, method):
+def target(url, method, *, inference=False):
     parsed = urlsplit(url)
     allowed = (method == 'GET' and (parsed.path in GET_PATHS or
                re.fullmatch(r'/api/v1/organizations/[A-Za-z0-9_-]+/tags', parsed.path) or
                re.fullmatch(r'/sash/api/v1/organizations/[A-Za-z0-9_-]+/'
                             r'(plugins/effective|mcp-governance/policy|policies)', parsed.path))) or (
-               method == 'POST' and parsed.path in POST_PATHS and parsed.hostname == 'openapi.qoder.com.cn')
+               method == 'POST' and parsed.path in POST_PATHS and parsed.hostname == 'openapi.qoder.com.cn') or (
+               inference and method == 'POST' and parsed.path in MODEL_PATHS and parsed.hostname == 'gateway.qoder.com.cn')
     if (parsed.scheme != 'https' or parsed.hostname not in HOSTS or parsed.port not in (None, 443)
             or parsed.username or parsed.password or parsed.fragment or not allowed):
         raise ValueError('Only Qoder authentication and account metadata endpoints are allowed')
@@ -37,16 +40,20 @@ class Handler(BaseHTTPRequestHandler):
         pass
 
     def do_POST(self):
-        upstream = None
+        upstream, response_started = None, False
         try:
             if self.path != '/qoder':
                 raise ValueError('Unexpected proxy path')
             size = int(self.headers.get('Content-Length', 0))
-            if not 0 < size <= 1024**2:
+            if not 0 < size <= 128*1024**2:
                 raise ValueError('Invalid request size')
             request = json.loads(self.rfile.read(size))
-            url = target(request['url'], request['method'])
-            body = request['body']
+            url = target(request['url'], request['method'], inference=self.server.inference)
+            model_request = url.path in MODEL_PATHS
+            if not model_request and size > 1024**2:
+                raise ValueError('Account request exceeds the limit')
+            body = (base64.b64decode(request['body'], validate=True) if request.get('bodyEncoding') == 'base64'
+                    else request['body'].encode())
             if url.path == '/api/v1/jobToken/exchange':
                 if self.server.token_file is None:
                     raise ValueError('This session uses browser authentication')
@@ -54,12 +61,23 @@ class Handler(BaseHTTPRequestHandler):
                 if body['personal_token'] != 'rax-session-transport':
                     raise ValueError('Expected the session credential placeholder')
                 body['personal_token'] = private_text(self.server.token_file).strip()
-                body = json.dumps(body)
+                body = json.dumps(body).encode()
             headers = {k: v for k, v in request['headers'].items()
                        if k.lower() not in ('host', 'content-length', 'connection', 'accept-encoding')}
             upstream = open_request(request['url'], request['method'], headers,
-                                    body.encode() if body else None, 60)
+                                    body if body else None, 900 if model_request else 60)
             response = upstream
+            if model_request:
+                self.send_response(response.status)
+                for name, value in response.headers.items():
+                    if name.lower() not in ('connection', 'transfer-encoding', 'content-length'):
+                        self.send_header(name, value)
+                self.end_headers()
+                response_started = True
+                while chunk := response.read1(65536):
+                    self.wfile.write(chunk)
+                    self.wfile.flush()
+                return
             data = response.read(8*1024**2+1)
             if len(data) > 8*1024**2:
                 raise ValueError('Qoder response exceeds the limit')
@@ -72,18 +90,20 @@ class Handler(BaseHTTPRequestHandler):
             pass
         except Exception as error:
             # Signed headers, credentials and upstream response bodies stay out of logs.
-            self.send_error(502, 'Qoder authentication transport failed: '+type(error).__name__)
+            if not response_started:
+                self.send_error(502, 'Qoder authentication transport failed: '+type(error).__name__)
         finally:
             if upstream:
                 upstream.close()
 
 
 @contextmanager
-def serve(path, token_file):
+def serve(path, token_file, *, inference=False):
     path.unlink(missing_ok=True)
     server = Server(str(path), Handler)
     path.chmod(0o600)
     server.token_file = token_file
+    server.inference = inference
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     try:

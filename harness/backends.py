@@ -4,7 +4,7 @@ from importlib import import_module
 NAMES = ('codex', 'claude', 'dsh', 'kimi', 'qoder')
 PROVIDERS = {
     'kimi': ('openrouter', 'moonshot-api', 'kimi-account', 'custom'),
-    'qoder': ('openrouter', 'custom'),
+    'qoder': ('qoder-account', 'openrouter', 'custom'),
 }
 MODULES = {
     'codex': 'harness.codex_cli.auto_research',

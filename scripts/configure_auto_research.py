@@ -57,7 +57,7 @@ def arguments():
                         help='TASK.md: the public task definition, or add rules summarized from the official task code')
     parser.add_argument('--agent-cli', choices=NAMES, default='codex',
                         help='Agent CLI backend')
-    parser.add_argument('--agent-provider', choices=('openrouter', 'claude-login', 'anthropic', 'custom', 'deepseek-api', 'deepseek-account', 'moonshot-api', 'kimi-account'), default='openrouter',
+    parser.add_argument('--agent-provider', choices=('openrouter', 'claude-login', 'anthropic', 'custom', 'deepseek-api', 'deepseek-account', 'moonshot-api', 'kimi-account', 'qoder-account'), default='openrouter',
                         help='Model provider for the selected native agent CLI')
     parser.add_argument('--agent-effort', choices=AGENT_EFFORTS, default='xhigh',
                         help='Model reasoning effort for the agent CLI')

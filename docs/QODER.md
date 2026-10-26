@@ -4,8 +4,9 @@ The `qoder` backend uses the official `@qodercn-ai/qoderclicn` package at versio
 `1.1.78`. Qoder runs its own agent loop. RAX supplies the existing workspace,
 robot MCP service, model request relay and code formal evaluation.
 
-Qoder CLI CN requires a Chinese Qoder account even when a custom provider
-supplies the model. Use a dedicated experiment login directory with mode `0700`.
+Use `--agent-provider qoder-account` to select Qoder's built-in models, including
+`DeepSeek-Flash`. This uses the Qoder account directly and needs no OpenRouter key
+or custom-provider permission. Use a dedicated experiment login directory with mode `0700`.
 After installation, sign in through the browser:
 
 ```bash
@@ -15,11 +16,10 @@ QODERCN_CONFIG_DIR=/private/experiment-qoder \
 
 Pass that directory as `--agent-auth-home`. RAX mounts only its `.auth` store
 inside the CLI's private home, so Qoder can read and refresh its browser login.
-The rest of the operator's home stays hidden. The account must permit custom
-providers. Browser login alone does not grant this access. If the CLI reports
-`Custom Provider access is not allowed` or `You do not have access to this model
-service`, enable custom-provider access for the account before you start the
-experiment. Pass the OpenRouter API key separately as `--agent-key-file`.
+The rest of the operator's home stays hidden.
+
+For optional `openrouter` or `custom` providers, the Qoder account must also
+permit custom providers. Pass the external model key as `--agent-key-file`.
 
 For unattended PAT authentication, create a personal access token through
 [Qoder CN account integrations](https://qoder.cn/account/integrations). Store it
@@ -31,9 +31,11 @@ The model key stays on the host. The CLI and its shell and file tools run inside
 RAX's existing bubblewrap boundary. They cannot reach the network directly or
 see the GPU. A separate Unix socket permits only Qoder CN login, token refresh
 and account metadata requests, including model catalogs and organization policies.
-It cannot send inference requests to Qoder. Model requests go through the
-existing relay, which enforces the selected model and reasoning
-effort. Both host relays use the host's `HTTP_PROXY`, `HTTPS_PROXY` and `NO_PROXY`
+In account mode, the same socket also permits the two native Qoder inference
+routes. It preserves encoded request bytes and streams responses. A hook checks
+the selected model and reasoning effort before the vendor encodes each request;
+the audit records only model, effort and image counts. External model requests use
+the existing model relay. Both host relays use `HTTP_PROXY`, `HTTPS_PROXY` and `NO_PROXY`
 settings. They do not follow HTTP redirects with account or model credentials.
 
 Qoder's bundled HTTP client needs a separate transport adapter. A Node.js load
@@ -60,11 +62,10 @@ isolation. It makes paid model calls but uses no robot exploration episodes.
 
 ```bash
 runtime/envs/host/bin/python scripts/validate_native_cli.py \
-  --backend qoder --provider openrouter \
+  --backend qoder --provider qoder-account \
   --root runtime/validation/qoder-flash-1017 \
   --auth-home /private/experiment-qoder \
-  --key-file /private/openrouter.key \
-  --model deepseek/deepseek-v4.1-flash-1017 \
+  --model DeepSeek-Flash \
   --image /path/to/robot.jpg --fixture-workspace
 ```
 
@@ -77,16 +78,15 @@ three terminal-state goal images and no expert action demonstrations.
 runtime/envs/host/bin/python scripts/configure_auto_research.py \
   --benchmark dexjoco --task click_mouse --sim-gpu GPU-UUID \
   --episodes 16 --formal-episodes 150 --formal-workers 4 \
-  --agent-cli qoder --agent-provider openrouter --agent-effort max \
+  --agent-cli qoder --agent-provider qoder-account --agent-effort max \
   --exploration-envs 1 --subagents 0 --external-perception off \
   --observation-profile rgbd --demonstration-context terminal_state \
   --expert-demonstrations 0 --episode-reviews off
 
 bash scripts/start_auto_research_agent.sh \
   --config /path/printed/by/configure/operator-input.json --non-interactive \
-  --agent-model deepseek/deepseek-v4.1-flash-1017 \
-  --agent-auth-home /private/experiment-qoder \
-  --agent-key-file /private/openrouter.key
+  --agent-model DeepSeek-Flash \
+  --agent-auth-home /private/experiment-qoder
 ```
 
 Use `--resume` with the same configuration to continue an existing session.
