@@ -123,6 +123,8 @@ def test_real_qoder_binary_and_sandbox(tmp_path):
     assert settings['model']['reasoningEffort'] == 'max'
     command = qoder.agent_command(config, deployed, prompt='unused')
     assert command[command.index('--mcp-config')+1] == str(deployed['qoder_home']/'mcp.json')
+    assert command[command.index('--model')+1] == 'rax/'+spec.MODEL
+    assert command[command.index('--reasoning-effort')+1] == 'max'
     # --help validates the actual vendor's command-line options without making a model call.
     result = subprocess.run([*command, '--help'], env=environment, capture_output=True, text=True, timeout=30)
     assert result.returncode == 0, result.stderr[-1000:]

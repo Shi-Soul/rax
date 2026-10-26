@@ -1,5 +1,6 @@
 """Qoder uses the shared native lifecycle and a restricted account connection."""
 from contextlib import contextmanager
+import json
 import os
 from pathlib import Path
 
@@ -37,6 +38,10 @@ class QoderAdapter(Adapter):
                                        interactive=interactive, json_output=json_output)
         # The CLI starts in the workspace; its MCP file belongs to its private home.
         command[command.index('--mcp-config')+1] = str(Path(deployed[self.HOME_KEY])/'mcp.json')
+        login = json.loads(Path(deployed['login']).read_text())
+        position = command.index('--print')
+        command[position:position] = ['--model', 'rax/'+login['model'],
+                                     '--reasoning-effort', config.agent_effort]
         return command
 
     def agent_environment(self, config, deployed, socket):
