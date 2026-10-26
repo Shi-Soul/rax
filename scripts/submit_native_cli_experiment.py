@@ -39,7 +39,9 @@ def submit(args):
     cli = get(args.backend)
     spec = importlib.import_module(cli.__name__.rsplit('.', 1)[0]+'.spec')
     model = args.model or spec.MODEL
-    credential = Credential(spec, 'openrouter', key_file=args.key_file)
+    credential = Credential(spec, 'openrouter', key_file=args.key_file, auth_home=args.auth_home)
+    if args.backend == 'qoder':
+        cli.token_file(args.auth_home)
     validate_report(json.loads(args.validation.read_text()), args.backend, model)
     binary = cli.binary(args.binary)
     profile = json.loads(args.profile.read_text())
@@ -112,6 +114,8 @@ def run(args):
     command = [sys.executable, '-m', 'harness.codex_cli.auto_research', '--config', str(config),
         '--non-interactive', '--agent-model', record['model'], '--agent-binary', record['binary'],
         '--key-file', record['key_file'], '--agent-key-file', record['key_file']]
+    if record.get('auth_home'):
+        command += ['--agent-auth-home', record['auth_home']]
     with (config.parent/'agent.log').open('a') as log:
         child = subprocess.Popen(command, cwd=PROJECT, stdout=log, stderr=subprocess.STDOUT)
         for number in (signal.SIGTERM, signal.SIGINT):
@@ -130,6 +134,7 @@ def main():
     for name in ('root', 'profile', 'validation', 'key-file'):
         launch.add_argument('--'+name, type=Path, required=True)
     launch.add_argument('--binary', type=Path)
+    launch.add_argument('--auth-home', type=Path, help='Qoder experiment directory containing qoder-pat')
     launch.add_argument('--model')
     launch.add_argument('--submit', action='store_true')
     worker = actions.add_parser('run')

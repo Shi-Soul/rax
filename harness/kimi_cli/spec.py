@@ -10,6 +10,7 @@ from harness.cli_runtime import write_config
 from services.controller.storage import persist
 
 NAME, VERSION = 'kimi', '2.2.0'
+PACKAGE, ENTRY = '@moonshot-ai/kimi-code', 'dist/main.mjs'
 SOURCE_COMMIT = '67325c1b25e46b2fc66043bceab059221b719fa9'
 ACCOUNT = 'kimi-account'
 PROVIDERS = ('openrouter', 'moonshot-api', ACCOUNT, 'custom')

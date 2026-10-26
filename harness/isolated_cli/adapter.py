@@ -85,7 +85,7 @@ class Adapter:
             elif path.exists():
                 args += ['--ro-bind', '/dev/null', str(path)]
         readable = [*agent_host.reexposed_paths(), Path(value['node']).resolve().parent,
-                    install, HERE, config.root/'published',
+                    install, HERE, *getattr(self.spec, 'READABLE_PATHS', ()), config.root/'published',
                     *(source for source, _ in reference_sources(config))]
         for path in dict.fromkeys(Path(p).resolve() for p in readable):
             args += ['--ro-bind', str(path), str(path)]

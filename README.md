@@ -71,6 +71,7 @@ bash scripts/run_operator_dashboard.sh                    # prepare and launch s
 
 The full guides:
 
+- [Qoder CLI](docs/QODER.md): installation, account credentials, validation and the DeepSeek Click Mouse experiment.
 - [Agent harnesses](https://github.com/robot-agent-exploration/rax/blob/main/docs/AGENT_HARNESSES.md): Codex CLI, Claude Code, DeepSeek Harness and Kimi Code; providers, authentication and setup.
 - [DeepSeek serving](https://github.com/robot-agent-exploration/rax/blob/main/docs/DEEPSEEK_SERVING.md): four-H200 setup, tuning and protocol checks.
 - [DeepSeek model results](docs/DEEPSEEK_MODEL_RESULTS.md): DexJoCo task scores, baseline comparisons, configurations, API pricing and Click Mouse harness results.

@@ -54,6 +54,8 @@ def account_helper(spec, prefix, cache, npm):
 
 
 def install(spec, prefix, cache, *, with_account=False):
+    if with_account and spec.NAME != 'kimi':
+        raise ValueError('--with-account builds only the Kimi account helper')
     prefix, cache = prefix.resolve(), cache.resolve()
     prefix.mkdir(parents=True, exist_ok=True)
     cache.mkdir(parents=True, exist_ok=True)
@@ -61,14 +63,16 @@ def install(spec, prefix, cache, *, with_account=False):
     if not node or not npm:
         raise RuntimeError('Install Node.js 24 and npm first')
     run([npm, 'install', '--ignore-scripts', '--no-audit', '--no-fund', '--prefix', prefix,
-         '--cache', cache/'npm', f'@moonshot-ai/kimi-code@{spec.VERSION}'])
-    binary = prefix/'node_modules/@moonshot-ai/kimi-code/dist/main.mjs'
+         '--cache', cache/'npm', f'{spec.PACKAGE}@{spec.VERSION}'])
+    binary = prefix/'node_modules'/spec.PACKAGE/spec.ENTRY
     lock = prefix/'package-lock.json'
     version = subprocess.check_output([node, str(binary), '--version'], text=True).strip()
-    record = {'backend': spec.NAME, 'release': spec.VERSION, 'source_commit': spec.SOURCE_COMMIT,
+    record = {'backend': spec.NAME, 'release': spec.VERSION, 'package': spec.PACKAGE,
         'cli_version': version, 'binary': str(binary), 'node': node,
         'binary_sha256': hashlib.sha256(binary.read_bytes()).hexdigest(),
         'lock_sha256': hashlib.sha256(lock.read_bytes()).hexdigest()}
+    if spec.NAME == 'kimi':
+        record['source_commit'] = spec.SOURCE_COMMIT
     if with_account:
         record['account'] = account_helper(spec, prefix, cache, npm)
     (prefix/'rax-installation.json').write_text(json.dumps(record, indent=2)+'\n')
@@ -82,7 +86,7 @@ def main():
     parser.add_argument('--cache', type=Path, required=True)
     parser.add_argument('--with-account', action='store_true', help='Build the vendor account credential helper')
     args = parser.parse_args()
-    spec = importlib.import_module('harness.kimi_cli.spec')
+    spec = importlib.import_module('harness.'+args.backend+'_cli.spec')
     print(json.dumps(install(spec, args.prefix, args.cache, with_account=args.with_account), indent=2))
 
 

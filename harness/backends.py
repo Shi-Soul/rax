@@ -1,15 +1,17 @@
 """Agent adapters. Import an adapter only when its session needs it."""
 from importlib import import_module
 
-NAMES = ('codex', 'claude', 'dsh', 'kimi')
+NAMES = ('codex', 'claude', 'dsh', 'kimi', 'qoder')
 PROVIDERS = {
     'kimi': ('openrouter', 'moonshot-api', 'kimi-account', 'custom'),
+    'qoder': ('openrouter', 'custom'),
 }
 MODULES = {
     'codex': 'harness.codex_cli.auto_research',
     'claude': 'harness.claude_cli.auto_research',
     'dsh': 'harness.deepseek_cli.auto_research',
     'kimi': 'harness.kimi_cli.auto_research',
+    'qoder': 'harness.qoder_cli.auto_research',
 }
 
 
