@@ -258,6 +258,9 @@ def test_real_qoder_binary_and_sandbox(tmp_path, browser_login, provider):
                            model=model, key_file=None if provider == spec.ACCOUNT else key, auth_home=auth, base_url=None)
     deployed = fixture_workspace(qoder, config, args)
     sock = agent_host.socket_path(config.root)
+    artifacts = deployed['workspace']/'runtime/autonomous_controller'
+    assert artifacts.is_dir() and not artifacts.is_symlink()
+    (config.root/'published/probe.txt').write_text('published-artifact')
     environment = qoder.agent_environment(config, deployed, sock)
     assert 'private-qoder-pat' not in json.dumps(environment)
     assert 'private-model-key' not in json.dumps(environment)
@@ -293,6 +296,16 @@ except OSError:
 else:
     raise AssertionError('Backend source is writable')
 Path('output/isolated.txt').write_text('OK')
+artifacts = Path('runtime/autonomous_controller')
+assert (artifacts/'probe.txt').read_text() == 'published-artifact'
+for mutate in (lambda: (artifacts/'probe.txt').write_text('changed'),
+               lambda: artifacts.rename('runtime/replaced')):
+    try:
+        mutate()
+    except OSError:
+        pass
+    else:
+        raise AssertionError('Published artifacts are writable or replaceable')
 '''
     if browser_login:
         program += f'''

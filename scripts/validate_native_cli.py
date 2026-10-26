@@ -67,7 +67,11 @@ def fixture_workspace(cli, config, args):
     workspace, home = config.root/'agent-workspace', config.root/cli.HOME_NAME
     for path in (workspace/'output', workspace/'runtime', home, config.root/'published'):
         path.mkdir(parents=True, mode=0o700, exist_ok=True)
-    (workspace/'runtime/autonomous_controller').symlink_to(config.root/'published', target_is_directory=True)
+    artifacts = workspace/'runtime/autonomous_controller'
+    if args.backend == 'dsh':
+        artifacts.symlink_to(config.root/'published', target_is_directory=True)
+    else:
+        artifacts.mkdir()
     (workspace/'AGENTS.md').write_text('Validate the MCP, native file and shell tools. No robot episodes are available.\n')
     if args.backend == 'dsh':
         from harness.deepseek_cli.login import Credential, MODEL

@@ -114,7 +114,7 @@ def expose_references(config, workspace):
             link.symlink_to(source, target_is_directory=True)
 
 
-def prepare_workspace(config, home_name):
+def prepare_workspace(config, home_name, *, published_symlink=True):
     """The agent workspace (template, skills, TASK.md), its CLI home and the private
     configuration; shared by the Codex and Claude launchers."""
     root = config.root
@@ -123,7 +123,11 @@ def prepare_workspace(config, home_name):
     home.mkdir(mode=0o700)
     published = expose_published(root)
     persist(root/'workspace-manifest.json', populate_workspace(config, workspace))
-    (workspace/'runtime/autonomous_controller').symlink_to(published, target_is_directory=True)
+    artifacts = workspace/'runtime/autonomous_controller'
+    if published_symlink:
+        artifacts.symlink_to(published, target_is_directory=True)
+    else:
+        artifacts.mkdir()  # The launcher mounts published/ here read-only.
     expose_references(config, workspace)
     private_config = root/'configuration.json'
     with private_config.open('x') as stream:

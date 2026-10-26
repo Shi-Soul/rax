@@ -38,7 +38,7 @@ class Adapter:
         binary = self.binary(binary)
         credential = Credential(self.spec, config.agent_provider, key_file=key_file,
                                 auth_home=auth_home, base_url=base_url, binary=binary)
-        prepared = prepare_workspace(config, self.HOME_NAME)
+        prepared = prepare_workspace(config, self.HOME_NAME, published_symlink=False)
         model = model or self.spec.model(config.agent_provider)
         persist(config.root/LOGIN_FILE, {'agent_cli': self.spec.NAME, 'model': model,
             **credential.record(), 'binary': str(binary), 'node': shutil.which('node')})
@@ -92,6 +92,7 @@ class Adapter:
         # The stdio bridge is the only executable exposed from the controller.
         args += ['--ro-bind', str(agent_host.BRIDGE), '/tmp/rax-bridge/mcp_bridge.py',
                  '--bind', str(workspace), str(workspace), '--bind', str(home), str(home),
+                 '--ro-bind', str(config.root/'published'), str(workspace/'runtime/autonomous_controller'),
                  '--bind', str(socket_dir), str(socket_dir)]
         if hasattr(self.spec, 'runtime_mounts'):
             for source, destination in self.spec.runtime_mounts(home):
