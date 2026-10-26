@@ -19,6 +19,13 @@ socket permits only Qoder login, token refresh and catalog requests. It cannot
 send inference requests to Qoder. Model requests go through the existing relay,
 which enforces the selected model and reasoning effort.
 
+Qoder's bundled HTTP client needs a separate transport adapter. A Node.js load
+hook checks the `1.1.78` bundle's SHA-256 hash and routes its HTTP entry point
+through the same Unix sockets. It does not change the installed package. An
+unknown bundle is rejected before execution. The startup regression test runs
+the real CLI against a local authentication fixture; live account and model
+validation still requires the credentials below.
+
 Install the pinned package:
 
 ```bash

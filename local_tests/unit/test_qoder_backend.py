@@ -2,6 +2,7 @@
 from dataclasses import replace
 import http.client
 import json
+import os
 from pathlib import Path
 import shutil
 import socket
@@ -100,6 +101,56 @@ def test_failed_result_is_not_treated_as_success(tmp_path):
     assert qoder.last_error(tmp_path) == 'Not logged in'
     qoder.capture_event(tmp_path, 'not-json')
     assert spec.arguments('continue', 'session-1')[-4:] == ['--resume', 'session-1', '--print', 'continue']
+
+
+def test_real_qoder_login_reaches_account_relay(tmp_path, monkeypatch):
+    binary = spec.default_binary()
+    if not binary.is_file() or not shutil.which('bwrap') or not shutil.which('node'):
+        pytest.skip('Pinned Qoder CLI, node and bubblewrap are required')
+    sent = []
+    class RejectLogin:
+        def __init__(self, host, timeout):
+            self.host = host
+        def request(self, method, path, body, headers):
+            sent.append((self.host, method, path, json.loads(body)))
+        def getresponse(self):
+            return SimpleNamespace(status=401, getheader=lambda *args: 'application/json',
+                                   read=lambda size: b'{"error":"invalid fixture credential"}')
+        def close(self):
+            pass
+    monkeypatch.setattr(auth_proxy.http.client, 'HTTPSConnection', RejectLogin)
+    config = replace(configuration(tmp_path/'trial'), agent_cli='qoder', agent_effort='max')
+    auth = tmp_path/'auth'
+    auth.mkdir(mode=0o700)
+    private_file(auth/'qoder-pat', 'fixture-qoder-pat')
+    key = private_file(tmp_path/'provider.key', 'fixture-model-key')
+    args = SimpleNamespace(backend='qoder', binary=binary, provider='openrouter',
+                           model=spec.MODEL, key_file=key, auth_home=auth, base_url=None)
+    deployed = fixture_workspace(qoder, config, args)
+    env = qoder.agent_environment(config, deployed, agent_host.socket_path(config.root))
+    with qoder.relay(config, deployed):
+        result = subprocess.run(qoder.agent_command(config, deployed, prompt='Reply READY'),
+                                env=env, capture_output=True, text=True, timeout=45)
+    assert sent, result.stderr[-2000:]
+    assert sent[0][:3] == ('openapi.qoder.sh', 'POST', '/api/v1/jobToken/exchange')
+    assert sent[0][3]['personal_token'] == 'fixture-qoder-pat'
+    assert result.returncode != 0
+    assert 'Network attempt failed at dns' not in result.stderr
+
+
+def test_changed_qoder_bundle_is_rejected_before_execution(tmp_path):
+    node = shutil.which('node')
+    if not node:
+        pytest.skip('Node.js is required')
+    entry = tmp_path/'changed.mjs'
+    entry.write_text('console.log("MUST_NOT_RUN")')
+    transport = Path(qoder.__file__).with_name('transport.mjs')
+    result = subprocess.run([node, '--import', str(transport), str(entry)],
+                            env={**os.environ, 'RAX_QODER_ENTRY': str(entry)},
+                            capture_output=True, text=True, timeout=10)
+    assert result.returncode != 0
+    assert 'unsupported Qoder bundle' in result.stderr
+    assert 'MUST_NOT_RUN' not in result.stdout
 
 
 def test_real_qoder_binary_and_sandbox(tmp_path):

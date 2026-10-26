@@ -2,6 +2,9 @@
 import '../isolated_cli/transport.mjs';
 import http from 'node:http';
 import { Readable } from 'node:stream';
+import { createHash } from 'node:crypto';
+import { registerHooks } from 'node:module';
+import { pathToFileURL } from 'node:url';
 
 const modelFetch = globalThis.fetch;
 globalThis.fetch = async function(input, init = {}) {
@@ -26,3 +29,22 @@ globalThis.fetch = async function(input, init = {}) {
     else outgoing.end(body);
   });
 };
+
+// Qoder 1.1.78 uses a bundled Undici client, not global fetch, for timed requests.
+// Replace only its transport entry while loading; the installed package stays intact.
+// A different bundle must be reviewed and tested before it can run in this sandbox.
+const relayFetch = Symbol.for('rax.qoder.fetch');
+globalThis[relayFetch] = globalThis.fetch;
+const entry = pathToFileURL(process.env.RAX_QODER_ENTRY).href;
+const bundleHash = 'ec7b2a2c1be206f525ca974c3b9455fbec9ce7411bc5dfdee55f1e82eb90df38';
+const original = 'function bT(A,e,t={}){return Iji(Hgl(A,e,t))}';
+registerHooks({load(url, context, nextLoad) {
+  const loaded = nextLoad(url, context);
+  if (url !== entry) return loaded;
+  const source = loaded.source.toString();
+  if (createHash('sha256').update(source).digest('hex') !== bundleHash ||
+      source.split(original).length !== 2)
+    throw new Error('RAX: unsupported Qoder bundle; install the pinned 1.1.78 release');
+  return {...loaded, source: source.replace(original,
+    'function bT(A,e,t={}){return Iji(globalThis[Symbol.for("rax.qoder.fetch")](A,e))}')};
+}});

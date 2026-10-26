@@ -47,6 +47,7 @@ class QoderAdapter(Adapter):
     def agent_environment(self, config, deployed, socket):
         env = super().agent_environment(config, deployed, socket)
         env.update(NODE_OPTIONS=f'--import={Path(__file__).with_name("transport.mjs")}',
+                   RAX_QODER_ENTRY=str(deployed['binary']),
                    RAX_QODER_AUTH_SOCKET=str(Path(socket).parent/'qoder-auth.sock'))
         return env
 
