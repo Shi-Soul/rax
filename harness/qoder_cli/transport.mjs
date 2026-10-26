@@ -30,13 +30,13 @@ globalThis.fetch = async function(input, init = {}) {
   });
 };
 
-// Qoder 1.1.78 uses a bundled Undici client, not global fetch, for timed requests.
+// Qoder CLI CN 1.1.78 uses a bundled Undici client, not global fetch, for timed requests.
 // Replace only its transport entry while loading; the installed package stays intact.
 // A different bundle must be reviewed and tested before it can run in this sandbox.
 const relayFetch = Symbol.for('rax.qoder.fetch');
 globalThis[relayFetch] = globalThis.fetch;
 const entry = pathToFileURL(process.env.RAX_QODER_ENTRY).href;
-const bundleHash = 'ec7b2a2c1be206f525ca974c3b9455fbec9ce7411bc5dfdee55f1e82eb90df38';
+const bundleHash = 'bc22c27e592a065bce126d39831446a24170755b0b7f3b2288facea8dd39b275';
 const original = 'function bT(A,e,t={}){return Iji(Hgl(A,e,t))}';
 registerHooks({load(url, context, nextLoad) {
   const loaded = nextLoad(url, context);
@@ -44,7 +44,7 @@ registerHooks({load(url, context, nextLoad) {
   const source = loaded.source.toString();
   if (createHash('sha256').update(source).digest('hex') !== bundleHash ||
       source.split(original).length !== 2)
-    throw new Error('RAX: unsupported Qoder bundle; install the pinned 1.1.78 release');
+    throw new Error('RAX: unsupported Qoder bundle; install the pinned CLI CN 1.1.78 release');
   return {...loaded, source: source.replace(original,
     'function bT(A,e,t={}){return Iji(globalThis[Symbol.for("rax.qoder.fetch")](A,e))}')};
 }});

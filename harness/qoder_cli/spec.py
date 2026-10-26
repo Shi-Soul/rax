@@ -1,12 +1,12 @@
-"""Pinned Qoder CLI configuration; Qoder owns the agent loop."""
+"""Pinned Qoder CLI CN configuration; Qoder owns the agent loop."""
 from pathlib import Path
 
 from harness import agent_host
 from services.controller.storage import persist
 
 NAME, VERSION = 'qoder', '1.1.78'
-PACKAGE = '@qoder-ai/qodercli'
-ENTRY = 'bundle/qodercli.js'
+PACKAGE = '@qodercn-ai/qoderclicn'
+ENTRY = 'bundle/qoderclicn.js'
 ACCOUNT = None
 PROVIDERS = ('openrouter', 'custom')
 MODEL = 'deepseek/deepseek-v4.1-flash-1017'
@@ -20,7 +20,7 @@ def model(provider):
 
 
 def default_binary():
-    return agent_host.PROJECT/f'runtime/agent-backends/qoder-cli/tools/qoder-{VERSION}/node_modules/{PACKAGE}/{ENTRY}'
+    return agent_host.PROJECT/f'runtime/agent-backends/qoder-cli/tools/qodercn-{VERSION}/node_modules/{PACKAGE}/{ENTRY}'
 
 
 def installation(binary):
@@ -60,9 +60,9 @@ def arguments(prompt, resume):
 
 
 def environment(home, *, install):
-    return {'QODER_CONFIG_DIR': str(home),
-            'QODER_PERSONAL_ACCESS_TOKEN': 'rax-session-transport',
-            'QODER_DISABLE_UMID_REPORT': '1'}
+    return {'QODERCN_CONFIG_DIR': str(home),
+            'QODERCN_PERSONAL_ACCESS_TOKEN': 'rax-session-transport',
+            'QODERCN_DISABLE_UMID_REPORT': '1'}
 
 
 def event(value):

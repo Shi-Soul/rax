@@ -10,8 +10,7 @@ from urllib.parse import urlsplit
 from harness.claude_cli.login import private_text
 from harness.isolated_cli.relay import Server
 
-HOSTS = {'openapi.qoder.sh', 'center.qoder.sh', 'api1.qoder.sh',
-         'api2.qoder.sh', 'api3.qoder.sh', 'api2-v2.qoder.sh'}
+HOSTS = {'openapi.qoder.com.cn', 'gateway.qoder.com.cn'}
 GET_PATHS = {'/api/v1/userinfo', '/api/v3/user/status', '/api/v2/user/plan',
              '/api/v2/model/list', '/algo/api/v2/byok/config', '/api/v2/config/getDataPolicy'}
 POST_PATHS = {'/api/v1/jobToken/exchange', '/api/v1/jobToken/refresh'}
@@ -21,7 +20,7 @@ def target(url, method):
     parsed = urlsplit(url)
     allowed = (method == 'GET' and (parsed.path in GET_PATHS or
                re.fullmatch(r'/api/v1/organizations/[A-Za-z0-9_-]+/tags', parsed.path))) or (
-               method == 'POST' and parsed.path in POST_PATHS and parsed.hostname == 'openapi.qoder.sh')
+               method == 'POST' and parsed.path in POST_PATHS and parsed.hostname == 'openapi.qoder.com.cn')
     if (parsed.scheme != 'https' or parsed.hostname not in HOSTS or parsed.port not in (None, 443)
             or parsed.username or parsed.password or parsed.fragment or not allowed):
         raise ValueError('Only Qoder authentication and catalog endpoints are allowed')

@@ -1,12 +1,12 @@
-# Qoder CLI on DexJoCo
+# Qoder CLI CN on DexJoCo
 
-The `qoder` backend uses the official `@qoder-ai/qodercli` package at version
+The `qoder` backend uses the official `@qodercn-ai/qoderclicn` package at version
 `1.1.78`. Qoder runs its own agent loop. RAX supplies the existing workspace,
 robot MCP service, model request relay and code formal evaluation.
 
 Qoder requires a Qoder account even when a custom provider supplies the model.
 Use a dedicated experiment account whose plan enables custom providers. Create
-a personal access token through [Qoder account integrations](https://qoder.com/account/integrations).
+a personal access token through [Qoder account integrations](https://qoder.cn/account/integrations).
 Keep it in a file named `qoder-pat`, with mode `0600`, inside an experiment
 directory with mode `0700`. Pass that directory as `--agent-auth-home`.
 Pass the OpenRouter API key separately as `--agent-key-file`.
@@ -31,7 +31,7 @@ Install the pinned package:
 ```bash
 runtime/envs/host/bin/python scripts/install_native_cli.py \
   --backend qoder \
-  --prefix runtime/agent-backends/qoder-cli/tools/qoder-1.1.78 \
+  --prefix runtime/agent-backends/qoder-cli/tools/qodercn-1.1.78 \
   --cache /tmp/rax-qoder-install
 ```
 
@@ -75,5 +75,5 @@ Agent formal evaluation, adaptation and subagents are not enabled for this backe
 The SLURM submission script also accepts `--backend qoder --auth-home ...` and
 requires a matching successful validation report.
 
-Reference: [Qoder CLI authentication](https://docs.qoder.com/cli/authentication)
-and [CLI parameters](https://docs.qoder.com/cli/cli-reference).
+Reference: [Qoder CLI authentication](https://docs.qoder.cn/cli/authentication)
+and [CLI parameters](https://docs.qoder.cn/cli/cli-reference).

@@ -38,24 +38,24 @@ def test_auth_is_required_before_workspace_creation(tmp_path):
 
 
 @pytest.mark.parametrize('url,method', [
-    ('https://openapi.qoder.sh/api/v1/jobToken/exchange', 'POST'),
-    ('https://openapi.qoder.sh/api/v3/user/status', 'GET'),
-    ('https://api2.qoder.sh/api/v2/model/list?Encode=1', 'GET'),
-    ('https://openapi.qoder.sh/api/v1/organizations/org-123/tags', 'GET'),
+    ('https://openapi.qoder.com.cn/api/v1/jobToken/exchange', 'POST'),
+    ('https://openapi.qoder.com.cn/api/v3/user/status', 'GET'),
+    ('https://gateway.qoder.com.cn/api/v2/model/list?Encode=1', 'GET'),
+    ('https://openapi.qoder.com.cn/api/v1/organizations/org-123/tags', 'GET'),
 ])
 def test_account_routes(url, method):
     assert auth_proxy.target(url, method).scheme == 'https'
 
 
 @pytest.mark.parametrize('url,method', [
-    ('http://openapi.qoder.sh/api/v1/userinfo', 'GET'),
-    ('https://openapi.qoder.sh.evil.invalid/api/v1/userinfo', 'GET'),
-    ('https://secret@openapi.qoder.sh/api/v1/userinfo', 'GET'),
-    ('https://openapi.qoder.sh:8443/api/v1/userinfo', 'GET'),
-    ('https://openapi.qoder.sh/api/v1/userinfo#fragment', 'GET'),
-    ('https://api2.qoder.sh/api/v2/service/ask', 'POST'),
-    ('https://openapi.qoder.sh/api/v2/config/updateDataPolicy', 'POST'),
-    ('https://openapi.qoder.sh/api/v1/userinfo', 'DELETE'),
+    ('http://openapi.qoder.com.cn/api/v1/userinfo', 'GET'),
+    ('https://openapi.qoder.com.cn.evil.invalid/api/v1/userinfo', 'GET'),
+    ('https://secret@openapi.qoder.com.cn/api/v1/userinfo', 'GET'),
+    ('https://openapi.qoder.com.cn:8443/api/v1/userinfo', 'GET'),
+    ('https://openapi.qoder.com.cn/api/v1/userinfo#fragment', 'GET'),
+    ('https://gateway.qoder.com.cn/api/v2/service/ask', 'POST'),
+    ('https://openapi.qoder.com.cn/api/v2/config/updateDataPolicy', 'POST'),
+    ('https://openapi.qoder.com.cn/api/v1/userinfo', 'DELETE'),
 ])
 def test_account_connection_cannot_make_model_calls_or_arbitrary_requests(url, method):
     with pytest.raises(ValueError, match='authentication and catalog'):
@@ -66,7 +66,7 @@ def test_pat_is_inserted_only_by_host_proxy(tmp_path, monkeypatch):
     sent = []
     class Upstream:
         def __init__(self, host, timeout):
-            assert host == 'openapi.qoder.sh'
+            assert host == 'openapi.qoder.com.cn'
         def request(self, method, path, body, headers):
             sent.append(json.loads(body))
         def getresponse(self):
@@ -82,7 +82,7 @@ def test_pat_is_inserted_only_by_host_proxy(tmp_path, monkeypatch):
         connection.sock = socket.socket(socket.AF_UNIX)
         connection.sock.connect(str(path))
         connection.request('POST', '/qoder', json.dumps({
-            'url': 'https://openapi.qoder.sh/api/v1/jobToken/exchange', 'method': 'POST',
+            'url': 'https://openapi.qoder.com.cn/api/v1/jobToken/exchange', 'method': 'POST',
             'headers': {'Content-Type': 'application/json'},
             'body': json.dumps({'personal_token': 'rax-session-transport'})}))
         response = connection.getresponse()
@@ -132,7 +132,7 @@ def test_real_qoder_login_reaches_account_relay(tmp_path, monkeypatch):
         result = subprocess.run(qoder.agent_command(config, deployed, prompt='Reply READY'),
                                 env=env, capture_output=True, text=True, timeout=45)
     assert sent, result.stderr[-2000:]
-    assert sent[0][:3] == ('openapi.qoder.sh', 'POST', '/api/v1/jobToken/exchange')
+    assert sent[0][:3] == ('openapi.qoder.com.cn', 'POST', '/api/v1/jobToken/exchange')
     assert sent[0][3]['personal_token'] == 'fixture-qoder-pat'
     assert result.returncode != 0
     assert 'Network attempt failed at dns' not in result.stderr
