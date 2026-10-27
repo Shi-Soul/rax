@@ -8,6 +8,7 @@ import os
 from pathlib import Path, PurePosixPath
 import stat
 import shutil
+import time
 import uuid
 
 AGENT_TEMPLATE = Path(__file__).resolve().parents[2] / 'auto_research_agent'
@@ -43,6 +44,17 @@ def persist(path: Path, value):
         os.fsync(fd)
     finally:
         os.close(fd)
+
+
+def read_state(path: Path):
+    """Read shared state through a brief SSHFS replacement visibility gap."""
+    for attempt in range(10):
+        try:
+            return json.loads(path.read_text())
+        except FileNotFoundError:
+            if attempt == 9:
+                raise
+            time.sleep(.1)
 
 
 @contextmanager

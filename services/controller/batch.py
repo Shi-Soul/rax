@@ -29,7 +29,8 @@ def validate_layouts(config):
 
 def import_rehearsed_bundle(supervisor, source, bundle_id):
     """Import evidence only after validating the source manifest and runtime."""
-    state = json.loads((source/'state.json').read_text())
+    from .storage import read_state
+    state = read_state(source/'state.json')
     manifest = state['bundles'][bundle_id]
     source_bundle = (source/'bundles'/manifest['directory']).resolve()
     if not source_bundle.is_relative_to((source/'bundles').resolve()):

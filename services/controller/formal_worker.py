@@ -191,7 +191,8 @@ def main():
         signal.signal(signal.SIGTERM, signal.SIG_IGN)
         raise KeyboardInterrupt
     signal.signal(signal.SIGTERM, stop)
-    state = json.loads((args.parent_root/'state.json').read_text())
+    from .storage import read_state
+    state = read_state(args.parent_root/'state.json')
     parent = Configuration.from_dict(state['configuration'])
     if parent.root != args.parent_root.resolve():
         raise SystemExit('Parent configuration root mismatch')

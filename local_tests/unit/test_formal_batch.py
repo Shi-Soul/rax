@@ -115,6 +115,38 @@ def test_import_requires_real_rehearsal_and_identical_frozen_bundle(tmp_path):
         target.close()
 
 
+def test_bundle_import_reads_parent_state_through_replace_gap(tmp_path, monkeypatch):
+    import errno
+
+    source_root = tmp_path/'original'
+    original = Supervisor(configuration(source_root), Backend, runner_factory=Runner)
+    source_root = original.config.root
+    target = Supervisor(config(tmp_path/'batch'), Backend, runner_factory=Runner)
+    try:
+        bundle, manifest = original.register(source(tmp_path, 'controller.py'))
+        backend = Backend()
+        backend.success = True
+        original.backend_factory = lambda: backend
+        original.run(bundle, formal=False)
+        original_read = Path.read_text
+        reads = []
+
+        def interrupted_read(path, *args, **kwargs):
+            if path == source_root/'state.json':
+                reads.append(path)
+                if len(reads) == 1:
+                    raise FileNotFoundError(errno.ENOENT, 'Replacement in progress', str(path))
+            return original_read(path, *args, **kwargs)
+
+        monkeypatch.setattr(Path, 'read_text', interrupted_read)
+        imported = import_rehearsed_bundle(target, source_root, bundle)
+        assert len(reads) == 2
+        assert target.state['bundles'][imported]['sha256'] == manifest['sha256']
+    finally:
+        original.close()
+        target.close()
+
+
 def test_import_keeps_the_rehearsal_evidence_whole(tmp_path):
     """A rehearsal that reached the native end and then outlived the finalization window
     qualifies; its import must qualify too and must not claim task success."""

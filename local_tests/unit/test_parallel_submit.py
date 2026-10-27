@@ -14,6 +14,47 @@ from test_formal_batch import config
 from bench import OBSERVE
 
 
+def test_worker_bootstrap_reads_parent_state_through_replace_gap(tmp_path, monkeypatch):
+    import errno
+    import os
+    import signal
+    import sys
+    from types import SimpleNamespace
+
+    s, _, bundle = rehearsed(tmp_path)
+    state_path = s.config.root/'state.json'
+    original_read = Path.read_text
+    reads, started = [], []
+
+    def interrupted_read(path, *args, **kwargs):
+        if path == state_path:
+            reads.append(path)
+            if len(reads) == 1:
+                raise FileNotFoundError(errno.ENOENT, 'Replacement in progress', str(path))
+        return original_read(path, *args, **kwargs)
+
+    def run(parent, bundle_id, index, channel):
+        started.append((parent.root, bundle_id, index))
+        return {'reason': 'exit', 'returncode': 0, 'task_complete': False}
+
+    monkeypatch.setattr(Path, 'read_text', interrupted_read)
+    monkeypatch.setattr(formal_worker, 'ctypes', SimpleNamespace(
+        CDLL=lambda *args, **kwargs: SimpleNamespace(prctl=lambda *args: 0)))
+    monkeypatch.setattr(formal_worker, 'signal', SimpleNamespace(
+        SIGTERM=signal.SIGTERM, SIG_IGN=signal.SIG_IGN, signal=lambda *args: None))
+    monkeypatch.setattr(formal_worker, 'socket', SimpleNamespace(socket=lambda **kwargs: None))
+    monkeypatch.setattr(formal_worker, 'Channel', lambda connection: None)
+    monkeypatch.setattr(formal_worker, 'run_worker', run)
+    monkeypatch.setattr(sys, 'argv', ['formal_worker', '--parent-root', str(s.config.root),
+        '--bundle', bundle, '--index', '0', '--channel-fd', '1', '--parent-pid', str(os.getppid())])
+    try:
+        formal_worker.main()
+        assert len(reads) == 2
+        assert started == [(s.config.root, bundle, 0)]
+    finally:
+        s.close()
+
+
 class Finished:
     """A worker that already ran to completion inside the factory."""
     pid = None
