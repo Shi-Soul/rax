@@ -2,6 +2,7 @@
 from pathlib import Path
 
 from harness import agent_host
+from harness.cli_runtime import CALL_SECONDS
 from services.controller.storage import persist
 
 NAME, VERSION = 'qoder', '1.1.78'
@@ -12,6 +13,7 @@ ACCOUNT_ENDPOINT = 'https://gateway.qoder.com.cn/model/v1'
 PROVIDERS = (ACCOUNT, 'openrouter', 'custom')
 MODEL = 'deepseek/deepseek-v4.1-flash-1017'
 READABLE_PATHS = (Path(__file__).resolve().parent,)
+TOOL_TIMEOUT_MS = (CALL_SECONDS+300)*1000
 
 
 def model(provider):
@@ -49,7 +51,7 @@ def write_home(config, home, selected_model, socket):
         'privacy': {'usageStatisticsEnabled': False},
         'aiCodeStatistics': {'enabled': False},
         'context': {'fileName': 'AGENTS.md'},
-        'mcp': {'timeout': 600000}}
+        'mcp': {'timeout': TOOL_TIMEOUT_MS}}
     if config.agent_provider == ACCOUNT:
         del settings['providers']
     persist(home/'settings.json', settings)
@@ -69,7 +71,10 @@ def arguments(prompt, resume):
 def environment(home, *, install):
     return {'QODERCN_CONFIG_DIR': str(home),
             'QODERCN_PERSONAL_ACCESS_TOKEN': 'rax-session-transport',
-            'QODERCN_DISABLE_UMID_REPORT': '1'}
+            'QODERCN_DISABLE_UMID_REPORT': '1',
+            'MCP_TOOL_TIMEOUT': str(TOOL_TIMEOUT_MS),
+            'QODER_MCP_TOOL_IDLE_TIMEOUT': str(TOOL_TIMEOUT_MS),
+            'BASH_MAX_TIMEOUT_MS': str(CALL_SECONDS*1000)}
 
 
 def event(value):

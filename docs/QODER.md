@@ -4,6 +4,10 @@ The `qoder` backend uses the official `@qodercn-ai/qoderclicn` package at versio
 `1.1.78`. The host also needs `curl`. Qoder runs its own agent loop. RAX supplies the existing workspace,
 robot MCP service, model request relay and code formal evaluation.
 
+RAX sets Qoder's MCP call limit, MCP idle limit and maximum shell time from the
+shared call limit used by Claude Code. This permits long robot calls to return
+their results. RAX's supervisor enforces each task's episode time limit.
+
 Use `--agent-provider qoder-account` to select Qoder's built-in models, including
 `DeepSeek-Flash`. This uses the Qoder account directly and needs no OpenRouter key
 or custom-provider permission. Use a dedicated experiment login directory with mode `0700`.

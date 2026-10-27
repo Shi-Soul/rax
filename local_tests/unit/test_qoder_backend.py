@@ -17,6 +17,7 @@ from urllib.parse import urlsplit
 import pytest
 
 from harness import agent_host
+from harness.cli_runtime import CALL_SECONDS
 from harness.qoder_cli import auth_proxy, auto_research as qoder, spec
 from scripts.validate_native_cli import fixture_workspace
 from test_controller_backend import configuration
@@ -328,6 +329,38 @@ assert.throws(() => inspect(JSON.stringify(body)), /configured model or reasonin
     assert 'PRIVATE_' not in content
     assert len(content.splitlines()) == 1
     assert json.loads(content)['image_blocks'] == 1
+
+
+def test_native_qoder_waits_for_the_full_controller_call(tmp_path):
+    binary, node = spec.default_binary(), shutil.which('node')
+    if not binary.is_file() or not node:
+        pytest.skip('Pinned Qoder CLI and Node.js are required')
+    config = replace(configuration(tmp_path/'trial'), agent_cli='qoder',
+                     agent_provider=spec.ACCOUNT, agent_effort='max')
+    home = tmp_path/'qoder-home'
+    home.mkdir(mode=0o700)
+    spec.write_home(config, home, spec.model(spec.ACCOUNT), tmp_path/'robot.sock')
+    server = json.loads((home/'mcp.json').read_text())['mcpServers']['auto_research']
+    environment = spec.environment(home, install=spec.installation(binary))
+    # Exercise the pinned CLI's own timeout selection without login or model calls.
+    script = '''
+const fs = require('node:fs');
+const vm = require('node:vm');
+const source = fs.readFileSync(process.argv[1], 'utf8');
+const start = source.indexOf('function SOn(');
+const end = source.indexOf('var hAo', start);
+if (start < 0 || end < start) throw new Error('Pinned Qoder timeout helpers changed');
+const {server, environment} = JSON.parse(process.argv[2]);
+const result = vm.runInNewContext(source.slice(start, end) +
+  '; ({total: cBA(server), idle: QAo(server)})', {server, process: {env: environment}});
+process.stdout.write(JSON.stringify(result));
+'''
+    result = subprocess.run([node, '-e', script, str(binary),
+                             json.dumps({'server': server, 'environment': environment})],
+                            capture_output=True, text=True, timeout=10, check=True)
+    expected = (CALL_SECONDS+300)*1000
+    assert json.loads(result.stdout) == {'total': expected, 'idle': expected}
+    assert environment['BASH_MAX_TIMEOUT_MS'] == str(CALL_SECONDS*1000)
 
 
 @pytest.mark.parametrize('browser_login,provider', [(False, 'openrouter'), (True, 'openrouter'), (True, spec.ACCOUNT)])
