@@ -129,6 +129,61 @@ def test_migration_cannot_change_time_limit(tmp_path):
         run(tmp_path/'source', tmp_path/'output', 2, formal_wall_seconds=1200)
 
 
+@pytest.mark.parametrize('imported_source', [False, True])
+def test_migration_preserves_started_layouts_from_agent_or_imported_batch(tmp_path, monkeypatch,
+                                                                        imported_source):
+    from services.controller import parallel_batch as module
+    source, output = tmp_path/'source', tmp_path/'recovered'
+    source.mkdir()
+    s = state(tmp_path)
+    s['formal_batch']['bundle'] = 'bundle'
+    s['bundles'] = {'bundle': {'directory': 'bundle', 'sha256': 'frozen'}}
+    original = tmp_path/'original' if imported_source else source
+    original_bundle = 'original-bundle' if imported_source else 'bundle'
+    lifecycle = {'status': 'failed'}
+    if imported_source:
+        original.mkdir()
+        lifecycle.update(kind='formal_batch', source_session=str(original), source_bundle=original_bundle)
+        (original/'state.json').write_text(json.dumps({
+            'bundles': {original_bundle: {'sha256': 'frozen'}}, 'results': [{'mode': 'rehearsal'}]}))
+    (source/'state.json').write_text(json.dumps(s))
+    (source/'agent-lifecycle.json').write_text(json.dumps(lifecycle))
+    monkeypatch.setattr(module, 'verify', lambda *a: None)
+    monkeypatch.setattr(module, 'validate_layouts', lambda *a: None)
+    monkeypatch.setattr(module, 'qualifying_rehearsal', lambda *a: True)
+    launched = []
+
+    class Process:
+        def __init__(self, command, **kwargs):
+            assert command[command.index('--source-session')+1] == str(original)
+            assert command[command.index('--bundle')+1] == original_bundle
+            layout = int(command[command.index('--first-layout')+1])
+            launched.append(layout)
+            self.pid = 123+layout
+            directory = Path(command[command.index('--output')+1])
+            directory.mkdir()
+            row = {'mode': 'formal', 'layout_id': layout, 'eval_seed': 1, 'sha256': 'frozen',
+                   'task_complete': True, 'reason': 'exit', 'returncode': 0}
+            (directory/'state.json').write_text(json.dumps({'results': [row]}))
+
+        def poll(self):
+            return 0
+
+    monkeypatch.setattr(module.subprocess, 'Popen', Process)
+    module.run(source, output, 4)
+    plan = json.loads((output/'evaluation-plan.json').read_text())
+    final = json.loads((output/'formal-report.json').read_text())
+    assert launched == list(range(3, 50))
+    assert plan['preserved_layouts'] == [0, 1, 2] and not plan['retry_allowed']
+    assert final['resolved_episodes'] == 50 and final['completed_episodes'] == 49
+    assert final['interrupted_count'] == 1 and final['success_rate'] == 48/50
+    assert final['episodes'][2]['formal_outcome'] == 'interrupted'
+    assert json.loads((source/'state.json').read_text()) == s
+    with pytest.raises(FileExistsError):
+        module.run(source, tmp_path/'retry', 4)
+    assert launched == list(range(3, 50))
+
+
 def test_evaluation_output_must_be_under_the_artifact_root(tmp_path):
     from services.controller import parallel_batch as module
     from services.storage_root import artifact_root

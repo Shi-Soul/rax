@@ -108,7 +108,11 @@ def run(source, output, workers, *, bundle_id=None, episodes=50, eval_seed=1,
             config, rows, pending = migration_plan(state, source)
             manifest = state['bundles'][state['formal_batch']['bundle']]
             lifecycle = json.loads((source/'agent-lifecycle.json').read_text())
-            original, original_bundle = Path(lifecycle['source_session']), lifecycle['source_bundle']
+            if 'source_session' in lifecycle or 'source_bundle' in lifecycle:
+                original, original_bundle = Path(lifecycle['source_session']), lifecycle['source_bundle']
+            else:
+                # Agent submissions keep their rehearsed bundle in the session itself.
+                original, original_bundle = source, state['formal_batch']['bundle']
         else:
             config = replace(Configuration.from_dict(state['configuration']), root=output,
                 formal_seed=0, formal_eval_seed=eval_seed, formal_episodes=episodes)
